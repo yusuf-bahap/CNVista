@@ -1,0 +1,17 @@
+# Never commit patient data
+*.bam
+*.bai
+*.cram
+*.crai
+*.vcf
+*.vcf.gz
+!templates/*.vcf
+!tests/**/*.vcf.gz
+private/
+patient*/
+hasta*/
+
+# System files
+.DS_Store
+._*
+Thumbs.db
