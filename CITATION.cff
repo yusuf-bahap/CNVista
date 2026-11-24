@@ -41,4 +41,4 @@ references:
       - name: "1000 Genomes Project Consortium"
     journal: "Nature"
     year: 2015
-    notes: "Source of the demo data. PMID 26432245"
+     notes: "Source of the example data (journal Supplementary File 1). PMID 26432245"
