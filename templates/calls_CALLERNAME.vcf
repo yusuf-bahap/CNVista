@@ -1,0 +1,9 @@
+##fileformat=VCFv4.2
+##source=CALLERNAME
+##ALT=<ID=DEL,Description="Deletion">
+##ALT=<ID=DUP,Description="Duplication">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="DEL or DUP">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the CNV">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=CN,Number=1,Type=Integer,Description="Copy number">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	PROBAND

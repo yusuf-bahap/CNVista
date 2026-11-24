@@ -1,0 +1,3 @@
+chromosome	start	end	type
+chr1	1000	5000	DEL
+chr1	20000	30000	DUP

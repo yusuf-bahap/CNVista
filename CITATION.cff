@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use CNVista in your work, please cite it as below."
+title: "CNVista: an offline browser tool for visual comparison of exome CNV calls from multiple callers"
+type: software
+version: 0.3.2
+date-released: 2026-11-17
+license: MIT
+authors:
+  - family-names: Bahap
+    given-names: Yusuf
+    affiliation: "Department of Medical Genetics, Gazi University, Ankara, Türkiye"
+repository-code: "https://github.com/yusuf-bahap/CNVista"
+keywords:
+  - copy-number variation
+  - exome sequencing
+  - CNV calling
+  - visualization
+  - ExomeDepth
+  - CoNIFER
+  - clinical genetics
+references:
+  - type: article
+    title: "A robust model for read count data in exome sequencing experiments and implications for copy number variant calling"
+    authors:
+      - family-names: Plagnol
+        given-names: Vincent
+    journal: "Bioinformatics"
+    year: 2012
+    notes: "ExomeDepth. PMID 22942019"
+  - type: article
+    title: "Copy number variation detection and genotyping from exome sequence data"
+    authors:
+      - family-names: Krumm
+        given-names: Niklas
+    journal: "Genome Research"
+    year: 2012
+    notes: "CoNIFER. PMID 22585873"
+  - type: article
+    title: "A global reference for human genetic variation"
+    authors:
+      - name: "1000 Genomes Project Consortium"
+    journal: "Nature"
+    year: 2015
+    notes: "Source of the demo data. PMID 26432245"

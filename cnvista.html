@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CNVista · offline CNV caller comparison</title>
+<style>
+/* Palette: cool clinical grey-blue with a petrol accent; the warm --acc is kept for the drop frame and for
+   highlights in the plots (proband row, ClinGen genes, parents). */
+:root{--bg:#EEF2F5;--card:#FFFFFF;--ink:#0F2A3D;--txt:#2F4254;--mut:#5F7387;--line:#D3DCE4;--soft:#E3EDF3;--pri:#0B6E79;--pri-ink:#FFFFFF;--acc:#A5520F;--del:#B8541B;--dup:#2F62A8;--fs:15px;
+  --t-calls:#EAF1FD;--b-calls:#BED2F4;--t-track:#E8F6EE;--b-track:#B5DEC6;--t-baf:#E6F6F7;--b-baf:#A9DADF;--t-seg:#FFF5E2;--b-seg:#F0D59E;--t-genes:#F1ECFC;--b-genes:#CFC1F0;--t-hi:#FDECEF;--b-hi:#F1C0C9;--t-skip:#F1F3F5;--b-skip:#D6DBE0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E151B;--card:#16212A;--ink:#E6EEF4;--txt:#C2CFDA;--mut:#8798A8;--line:#283846;--soft:#1F2E3A;--pri:#3FB6C2;--pri-ink:#0E151B;
+  --t-calls:#18263A;--b-calls:#2E4A73;--t-track:#152A21;--b-track:#2C5A44;--t-baf:#11292C;--b-baf:#2B5D63;--t-seg:#2A2414;--b-seg:#5E4E22;--t-genes:#221D33;--b-genes:#4A3F73;--t-hi:#2E1B21;--b-hi:#6A3542;--t-skip:#1B232B;--b-skip:#34414D}}
+:root[data-theme="dark"]{--bg:#0E151B;--card:#16212A;--ink:#E6EEF4;--txt:#C2CFDA;--mut:#8798A8;--line:#283846;--soft:#1F2E3A;--pri:#3FB6C2;--pri-ink:#0E151B;
+  --t-calls:#18263A;--b-calls:#2E4A73;--t-track:#152A21;--b-track:#2C5A44;--t-baf:#11292C;--b-baf:#2B5D63;--t-seg:#2A2414;--b-seg:#5E4E22;--t-genes:#221D33;--b-genes:#4A3F73;--t-hi:#2E1B21;--b-hi:#6A3542;--t-skip:#1B232B;--b-skip:#34414D}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:var(--fs)/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+body.big{--fs:19px}
+.wrap{max-width:1500px;margin:0 auto;padding:18px 16px 60px}
+h1{font-size:1.6em;color:var(--ink);margin:0;letter-spacing:-.01em}h1 .tag{font-weight:500;color:var(--pri);font-size:.55em;letter-spacing:.06em;text-transform:uppercase;margin-left:8px}
+h2{font-size:1.05em;color:var(--pri);margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);letter-spacing:.01em}h3{font-size:.95em;color:var(--ink);margin:0 0 4px}
+.masthead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--pri);border-radius:4px;padding:16px 18px;margin-bottom:16px}
+#drop{border:2.5px dashed var(--acc);border-radius:14px;padding:22px;text-align:center;background:var(--card);cursor:pointer;transition:background .15s}
+#drop.over{background:var(--soft)}#drop a{color:var(--acc);font-weight:600}#drop b{color:var(--ink);font-size:1.15em}
+.groups{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
+.grp{--t:var(--t-skip);--b:var(--b-skip);background:var(--t);border:1px solid var(--b);border-radius:4px;padding:10px 12px;transition:filter .15s}
+.grp[data-cat=calls]{--t:var(--t-calls);--b:var(--b-calls)}.grp[data-cat=track]{--t:var(--t-track);--b:var(--b-track)}.grp[data-cat=baf]{--t:var(--t-baf);--b:var(--b-baf)}
+.grp[data-cat=seg]{--t:var(--t-seg);--b:var(--b-seg)}
+.grp[data-cat=genes]{--t:var(--t-genes);--b:var(--b-genes)}.grp[data-cat=hi]{--t:var(--t-hi);--b:var(--b-hi)}
+.grp.over{filter:brightness(.95);outline:2px dashed var(--acc);outline-offset:-2px}
+.grp .hint{font-size:.8em;color:var(--mut);margin-bottom:6px}
+.grp .cnt{float:right;font-size:.78em;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--b);border-radius:9px;padding:0 7px}
+.grp .cnt:empty{display:none}
+.file{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--card);border:1px solid var(--b);border-radius:3px;padding:4px 8px;font-size:.87em;margin-top:5px}
+.file .n{flex:1 1 160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file select,.file input{font-size:.92em;padding:3px 6px}
+.file input.cl{width:120px}.file .sw{width:12px;height:12px;border-radius:2px;display:inline-block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--pri);border-radius:3px;padding:10px 14px}
+.stat b{display:block;font-size:1.7em;color:var(--ink);font-variant-numeric:tabular-nums}.stat span{color:var(--mut);font-size:.82em;text-transform:uppercase;letter-spacing:.04em}
+.combo{display:flex;align-items:center;gap:10px;margin:5px 0;cursor:pointer;border-radius:3px;padding:3px 6px}
+.combo:hover,.combo.on{background:var(--soft)}.combo .lab{width:260px}.combo .bar{height:16px;border-radius:2px}
+.combo .num{font-weight:600;color:var(--ink);min-width:28px;font-variant-numeric:tabular-nums}
+.dots{display:flex;gap:4px}.dot{width:12px;height:12px;border-radius:6px;border:1.5px solid var(--mut)}.dot.f{border-color:transparent}
+.venn{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
+#genome{width:100%;overflow-x:auto}#genome svg{display:block}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+select,input,button{font:inherit;padding:6px 9px;border:1px solid var(--line);border-radius:3px;background:var(--card);color:var(--txt)}
+button{cursor:pointer}button:hover{border-color:var(--pri)}button.pri{background:var(--pri);color:var(--pri-ink);border-color:var(--pri);font-weight:600}
+label.ck{display:flex;gap:6px;align-items:center}
+.tw{overflow-x:auto;max-height:520px;overflow-y:auto;border:1px solid var(--line);border-radius:3px}table{border-collapse:collapse;width:100%;font-size:.9em}
+th{position:sticky;top:0;background:var(--soft);color:var(--ink);text-align:left;padding:8px;cursor:pointer;white-space:nowrap;border-bottom:2px solid var(--pri);font-weight:600}
+td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
+tr:hover td{background:var(--soft)!important}tr.sel td{background:var(--soft)!important;font-weight:600}tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--pri)}
+.chip{display:inline-block;padding:1px 7px;border-radius:9px;font-size:.8em;margin-right:3px;color:#fff}
+.del{color:var(--del);font-weight:600}.dup{color:var(--dup);font-weight:600}
+#plot svg{width:100%;height:auto;display:block}.leg{display:flex;gap:16px;flex-wrap:wrap;font-size:.87em;color:var(--mut);margin-top:6px}
+.leg i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.note{font-size:.87em;color:var(--mut)}.hidden{display:none}.warn{color:var(--del)}.bs{display:inline-flex;gap:4px;align-items:center;margin-right:6px}.note.bad{color:var(--del);font-weight:600}
+#gleg{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-top:6px}#gleg svg{vertical-align:middle;margin-right:4px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.tag.ruo{background:transparent;border:1px solid var(--acc);color:var(--acc)}
+footer{margin-top:24px;font-size:.8em;color:var(--mut);text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="masthead"><h1>CNVista<span class="tag">CNV caller comparison</span><span class="tag ruo" title="Not a medical device; confirm every finding with an independent method">Research use only</span></h1>
+<div class="filters" style="margin:0"><label class="ck">Build <select id="build"><option>GRCh38</option><option>GRCh37</option></select></label>
+<button id="bBig">Presentation font</button><button id="bTheme">Light / dark</button><button id="bReset">Clear</button></div></div>
+
+<div id="drop"><b>Drop files or a whole run folder here</b> or click to choose files · <a href="#" id="pickDir">choose a folder</a><br>
+<span class="note">Files are sorted into the groups below by format and name. You can also drop files onto a group to place them there, and change any assignment with its menu.</span>
+<input type="file" id="inp" multiple class="hidden"><input type="file" id="inpDir" webkitdirectory multiple class="hidden"></div>
+<div class="groups" id="groups"></div>
+<div id="status" class="note" style="margin:10px 2px 0" role="status" aria-live="polite"></div>
+
+<div id="main" class="hidden">
+<div class="stats" id="stats"></div>
+<div class="card"><h2>How many events did each caller combination detect?</h2>
+<div class="venn"><div id="vennbox"></div><div id="combos" style="flex:1;min-width:420px"></div></div>
+<p class="note">Overlapping calls of the same type (DEL/DUP) are merged into a single “event”. Dots show which callers support each combination. Click a row to filter the table and genome view.</p></div>
+<div class="card"><h2>Events</h2>
+<div class="filters">
+<select id="fCombo"><option value="">All combinations</option></select>
+<select id="fType"><option value="">DEL + DUP</option><option>DEL</option><option>DUP</option></select>
+<label class="ck"><input type="checkbox" id="fMulti"> At least two callers</label>
+<label class="ck"><input type="checkbox" id="fOz"> Cohort-specific</label>
+<label class="ck"><input type="checkbox" id="fPass" checked> PASS calls only (VCF / FILTER column)</label>
+<select id="fPar" class="hidden"><option value="">Any parental status</option><option value="absent">Not seen in parents</option><option value="maternal">Maternal</option><option value="paternal">Paternal</option><option value="both">Both parents</option></select>
+<input id="fGene" placeholder="Search gene"><span class="note" id="cnt"></span></div>
+<div class="tw"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+</div>
+<div class="card" id="detail"><div class="top"><h2 id="dtitle">Region view</h2>
+<div class="filters"><input id="loc" placeholder="chr12:48900000-49360000 or gene symbol" size="34"><button class="pri" id="bGo">Go</button>
+<label class="ck">Flank <select id="flank"><option value="0.5">50%</option><option value="1" selected>100%</option><option value="2">200%</option><option value="4">400%</option></select></label>
+<label class="ck"><input type="radio" name="xm" value="idx" checked> target index</label><label class="ck"><input type="radio" name="xm" value="gen"> genomic</label>
+<label class="ck"><input type="checkbox" id="showIds"> show cohort sample IDs</label>
+<button id="bSvg">Download SVG</button></div></div>
+<div id="dinfo" class="note">Select an event from the table or genome view, or type a locus.</div><div id="plot"></div><div id="dleg"></div></div>
+<div class="card"><h2>Events across the genome</h2><div id="genome"></div>
+<p class="note">Colour and height show how many callers support each event; filters above the table apply here too.</p></div>
+</div>
+<footer>CNVista v0.3.2 · runs entirely offline, no data leave this computer · MIT licence<br>
+<b>For research use only.</b> CNVista is not a medical device and is not intended for diagnostic use. It displays the output of other programs and does not classify CNVs; every finding must be confirmed by an independent method (e.g. MLPA, qPCR or chromosomal microarray) and interpreted by a qualified professional.</footer>
+</div>
+<script>
+"use strict";
+const VERSION="0.3.2";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LOC="en-US";
+const BUILDS={
+ GRCh38:{chr1:248956422,chr2:242193529,chr3:198295559,chr4:190214555,chr5:181538259,chr6:170805979,chr7:159345973,chr8:145138636,chr9:138394717,chr10:133797422,chr11:135086622,chr12:133275309,chr13:114364328,chr14:107043718,chr15:101991189,chr16:90338345,chr17:83257441,chr18:80373285,chr19:58617616,chr20:64444167,chr21:46709983,chr22:50818468,chrX:156040895,chrY:57227415},
+ GRCh37:{chr1:249250621,chr2:243199373,chr3:198022430,chr4:191154276,chr5:180915260,chr6:171115067,chr7:159138663,chr8:146364022,chr9:141213431,chr10:135534747,chr11:135006516,chr12:133851895,chr13:115169878,chr14:107349540,chr15:102531392,chr16:90354753,chr17:81195210,chr18:78077248,chr19:59128983,chr20:63025520,chr21:48129895,chr22:51304566,chrX:155270560,chrY:59373566}};
+let G=BUILDS.GRCh38;const CHR=Object.keys(BUILDS.GRCh38);
+/* Known callers: name, filename/content pattern, colour, short label. Unknown callers get the next free colour. */
+const KNOWN=[["DRAGEN",/dragen/i,"#7B8494","DRG"],["ExomeDepth",/exome_?depth/i,"#2F62A8","ED"],["CoNIFER",/conifer/i,"#B8541B","CoN"],
+ ["GATK-gCNV",/gcnv|gatk/i,"#2E7D6B","gCNV"],["CNVkit",/cnvkit|\.cns$/i,"#7A4FA0","CNVkit"],["XHMM",/xhmm|\.xcnv$/i,"#C0392B","XHMM"],
+ ["CANOES",/canoes/i,"#8C6D1F","CAN"],["CLAMMS",/clamms/i,"#1F7A8C","CLM"],["Canvas",/canvas/i,"#9C3D6B","Canvas"],["Manta",/manta/i,"#6B4E3D","Manta"]];
+const EXTRA=["#2E7D6B","#7A4FA0","#C0392B","#8C6D1F","#1F7A8C","#9C3D6B","#4F6D1F","#6B4E3D"];
+const CAT={calls:["Call sets","CNV calls from any caller: TSV with chrom/start/end/type (or CN) columns, VCF (DEL/DUP), BED with DEL/DUP column, CNVkit .cns, XHMM/CANOES .xcnv. Files with the same caller name are merged."],
+ track:["Coverage tracks","Per-target values: bedGraph, CNVkit .cnr, GATK denoised copy ratios. Name files with proband / mother / father / sibling / control1 … to place them."],
+ baf:["Variants (BAF)","Small-variant VCF (SNVs, .vcf or .vcf.gz, single- or multi-sample) for B-allele frequency panels in the region view. Allele depths are read from FORMAT AD (or AF / RO+AO)."],
+ seg:["Cohort","SEG file with one row per sample segment (heat map)."],
+ genes:["Gene annotation","BED: chrom, start, end, gene symbol."],
+ hi:["ClinGen dosage","BED with a 5th column of haploinsufficiency scores (0–3, 30, 40)."],
+ skip:["Not used","Files that were not recognised or that you excluded."]};
+const RELS={proband:"Proband",mother:"Mother",father:"Father",sibling:"Sibling",control:"Control"};
+const kb=b=>b>=1e6?(b/1e6).toFixed(2)+" Mb":b>=1e3?(b/1e3).toFixed(1)+" kb":b+" bp";
+const nchr=c=>{c=String(c).trim().replace(/[^\w.\-]/g,"");if(/^chr/i.test(c))return "chr"+c.slice(3).replace(/^m$/i,"M").toUpperCase().replace(/^([0-9]+)$/,"$1");return "chr"+c.toUpperCase()};
+const F=[]; // file records
+let S=null, sel=null, cur=null, filt={combo:""}, sortK="id", sortDir=1;
+
+/* ---------- reading files (with folders) ---------- */
+const READABLE=/\.(tsv|txt|csv|bed|bedgraph|bg|seg|vcf|cns|cnr|xcnv|calls|tab)(\.gz)?$/i;
+async function readFile(f){
+  if(/\.gz$/i.test(f.name)){
+    if(typeof DecompressionStream==="undefined") throw new Error("This browser cannot open .gz files; please decompress the file and drop it again");
+    return await gunzip(new Uint8Array(await f.arrayBuffer()));
+  }
+  return await f.text();
+}
+/* gzip, including BGZF (bgzip/tabix .vcf.gz, .bed.gz): a BGZF file is a chain of gzip members, which the browser's
+   DecompressionStream stops reading after the first one, so each block is decompressed on its own and the parts are joined. */
+const gz1=b=>new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+async function gunzip(buf){
+  const bgzf=buf.length>18&&buf[0]===31&&buf[1]===139&&(buf[3]&4)&&buf[12]===66&&buf[13]===67;
+  if(!bgzf){try{return new TextDecoder().decode(await gz1(buf))}catch(e){return gunzipMulti(buf,e)}}
+  const blocks=[];let o=0;
+  while(o+18<=buf.length&&buf[o]===31&&buf[o+1]===139){const len=(buf[o+16]|(buf[o+17]<<8))+1;blocks.push(buf.subarray(o,o+len));o+=len}
+  const parts=[];for(let i=0;i<blocks.length;i+=256)parts.push(...await Promise.all(blocks.slice(i,i+256).map(gz1)));
+  const n=parts.reduce((a,p)=>a+p.byteLength,0),all=new Uint8Array(n);let q=0;for(const p of parts){all.set(new Uint8Array(p),q);q+=p.byteLength}
+  return new TextDecoder().decode(all)}
+// plain gzip files joined together (cat a.gz b.gz): split at member signatures; a false split is merged with the next part
+async function gunzipMulti(buf,err0){const cut=[0];for(let i=1;i+3<buf.length;i++)if(buf[i]===31&&buf[i+1]===139&&buf[i+2]===8&&buf[i+3]<32)cut.push(i);cut.push(buf.length);
+  if(cut.length<3)throw err0;const out=[];let a=0;
+  for(let j=1;j<cut.length;j++){try{out.push(new Uint8Array(await gz1(buf.subarray(cut[a],cut[j]))));a=j}catch(e){if(j===cut.length-1)throw err0}}
+  const n=out.reduce((s,p)=>s+p.length,0),all=new Uint8Array(n);let q=0;for(const p of out){all.set(p,q);q+=p.length}return new TextDecoder().decode(all)}
+/* Dropped items: plain files are read from dataTransfer.files (works in every browser); the entry API is
+   used only when a folder was dropped, and any failure there falls back to the plain file list.
+   Both lists are taken synchronously, because the browser empties dataTransfer after the event. */
+async function filesFromDrop(dt){
+  const plain=Array.from(dt.files||[]).map(f=>({file:f,path:f.webkitRelativePath||f.name}));
+  let entries=[];
+  try{const items=dt.items||[];for(let i=0;i<items.length;i++){const it=items[i];if(it&&it.kind==="file"&&it.webkitGetAsEntry){const en=it.webkitGetAsEntry();if(en)entries.push(en)}}}catch(e){entries=[]}
+  if(!entries.some(en=>en.isDirectory)) return plain;
+  try{
+    const out=[];
+    const walk=async(en,path)=>{
+      if(en.isFile){const f=await new Promise((res,rej)=>en.file(res,rej));out.push({file:f,path:path+f.name})}
+      else if(en.isDirectory){const rd=en.createReader();let b;do{b=await new Promise((res,rej)=>rd.readEntries(res,rej));for(const c of b)await walk(c,path+en.name+"/")}while(b.length)}};
+    for(const en of entries)await walk(en,"");
+    return out.length?out:plain;
+  }catch(e){return plain}
+}
+function status(msg,warn){const s=$("#status");if(!s)return;s.innerHTML=msg;s.classList.toggle("warn",!!warn)}
+async function addFiles(list,forceCat){
+  let skipped=0,read=0;const errs=[];
+  for(const {file:f,path} of list){
+    if(f.name.startsWith(".")||!READABLE.test(f.name)||f.size>400e6){skipped++;continue}
+    try{const text=await readFile(f);const rec=classify(f.name,path||f.name,text);if(forceCat)setCat(rec,forceCat);
+      const i=F.findIndex(x=>x.path===rec.path);if(i>=0)F[i]=rec;else F.push(rec);read++}
+    catch(e){errs.push(esc(f.name)+": "+esc(e.message))}
+  }
+  const pro=F.filter(f=>f.cat==="calls").flatMap(f=>f.sample?[f.sample]:f.samples||[]);
+  F.filter(f=>f.cat==="baf").forEach(f=>f.bafS.forEach((b,i)=>{if(b.auto)b.rel=bafRel(b.sample,f.path,i,f.bafS.length,pro)}));
+  numberControls();drawGroups(skipped);build();
+  if(!list.length) status("No files were received from the drop. Try again, or click the drop area to choose files.",true);
+  else if(errs.length) status("Could not read "+errs.join("; "),true);
+  else if(!read) status(`None of the ${list.length} file(s) is a supported text format (indexes and alignments are ignored).`,true);
+}
+async function onDrop(e,cat){
+  e.preventDefault();if(cat)e.stopPropagation();
+  $("#drop").classList.remove("over");document.querySelectorAll(".grp.over").forEach(g=>g.classList.remove("over"));
+  try{await addFiles(await filesFromDrop(e.dataTransfer),cat)}catch(err){status("Drop failed: "+esc(err.message)+". Click the drop area to choose files instead.",true)}
+}
+
+/* ---------- classification ---------- */
+function firstLine(text){return text.slice(0,4000).split("\n").find(l=>l.trim()&&!l.startsWith("##")&&!l.startsWith("@"))||""}
+function callerName(name,text){
+  const h=text.slice(0,6000);
+  if(/##source=DRAGEN|##DRAGEN/i.test(h))return "DRAGEN";
+  if(/GermlineCNVCaller|PostprocessGermlineCNVCalls/.test(h))return "GATK-gCNV";
+  const fl=firstLine(text).toLowerCase();
+  if(fl.includes("median_svdzrpkm"))return "CoNIFER";
+  if(fl.includes("reads_ratio"))return "ExomeDepth";
+  for(const [n,re] of KNOWN) if(re.test(name)) return n;
+  if(/\bq_some\b/.test(fl))return "XHMM";
+  if(/^chromosome\tstart\tend\tgene\tlog2/.test(fl))return "CNVkit";
+  if(fl.includes("copy_number")||fl.includes("acmg"))return "DRAGEN";
+  const stem=name.replace(/\.(gz)$/i,"").replace(/\.[^.]+$/,"").replace(/^\d+[_-]/,"");
+  const base=stem.replace(/([_\-. ][^_\-. ]*\d[^_\-. ]*)+$/,"");   // drop a trailing sample / run ID
+  return (base||stem).slice(0,24)||"Caller";
+}
+function roleIn(p){p=p.toLowerCase();
+  if(/mother|maternal|(^|[^a-z])(anne|mom|mum)([^a-z]|$)/.test(p))return "mother";
+  if(/father|paternal|(^|[^a-z])(baba|dad)([^a-z]|$)/.test(p))return "father";
+  if(/sibling|brother|sister|karde[sş]/.test(p))return "sibling";
+  if(/kontrol|control|ctrl/.test(p))return "control";
+  if(/proband|patient|hasta|index|child|cocuk|çocuk/.test(p))return "proband";
+  return null}
+// the file name decides; the folder path is used only when the name carries no role
+function relOf(path){const parts=path.split("/"),name=parts.pop();return roleIn(name)||roleIn(parts.join("/"))||"proband"}
+function metricOf(name,path,fl){const t=name+" "+fl;if(/log2/i.test(name))return "log2";if(/conifer|zrpkm|svd|zscore|z-score/i.test(t))return "z";
+  return /conifer|zrpkm|zscore/i.test(path)&&!/log2/i.test(fl)?"z":"log2"}
+const cleanCaller=n=>String(n||"").trim().replace(/\+/g,"&").slice(0,40)||"Caller";
+function setCat(r,cat){r.cat=cat;if(cat==="calls"){r.caller=cleanCaller(r.caller||callerName(r.name,r.text));r.calls=r.calls||parseCalls(r.text,r.name);
+    r.samples=[...new Set(r.calls.map(c=>c.sample).filter(Boolean))];r.sample=r.sample??(r.samples.length>1?(r.samples.find(s=>/hasta|patient|proband|index/i.test(s))||r.samples[0]):"")}
+  else if(cat==="track"){r.rel=r.rel||relOf(r.path);r.metric=r.metric||metricOf(r.name,r.path,firstLine(r.text));r.trace=r.trace||parseTrace(r.text)}
+  else if(cat==="baf"){if(!r.bafS){r.bafS=parseBaf(r.text);const pro=F.filter(f=>f.cat==="calls").flatMap(f=>f.sample?[f.sample]:f.samples||[]);
+      r.bafS.forEach((b,i)=>{b.rel=bafRel(b.sample,r.path,i,r.bafS.length,pro);b.auto=true})}}
+  else if(cat==="genes")r.bed=parseBed(r.text);else if(cat==="hi")r.bed=parseBed(r.text,true);else if(cat==="seg")r.seg=parseSeg(r.text)}
+function classify(name,path,text){
+  const n=path.toLowerCase(),fl=firstLine(text),fll=fl.toLowerCase(),cols=fll.replace(/^#/,"").split(sepOf(fl)).map(s=>s.trim().replace(/^"|"$/g,""));
+  const colsN=cols.map(nk),has=k=>colsN.includes(nk(k));let cat="skip";
+  if(fll.startsWith("#chrom")||/\.vcf(\.gz)?$/.test(n))cat=isSnvVcf(text)?"baf":"calls";
+  else if(/\.seg(\.gz)?$/.test(n)||/^id\tchrom/i.test(fl)||(has("segment_mean")||has("seg.mean"))&&CHR_K.some(has))cat="seg";
+  else if(/küme|kume|cluster/.test(fll)&&fll.startsWith("track")||/kumeler|clusters|ts_genes|clingen_ts/.test(n))cat="skip";
+  else if(/bedgraph|\.bg(\.gz)?$/.test(n)||(fll.startsWith("track")&&/bedgraph/.test(fll)))cat="track";
+  else if(/\.cnr$/.test(n)||(has("log2_copy_ratio")))cat="track";
+  else if(has("median_svdzrpkm")||has("reads_ratio")||has("bf")||has("copy_number")||has("acmg"))cat="calls";
+  else if(/\.(cns|xcnv)$/.test(n)||has("interval")&&has("cnv"))cat="calls";
+  else if(CHR_K.some(has)&&(TYPE_K.some(has)||CN_K.some(has)))cat="calls";
+  else if(INT_K.some(has)&&(TYPE_K.some(has)||CN_K.some(has)))cat="calls";
+  else if(fll.startsWith("track")){ if(/conifer|dragen|exomedepth|cnv/.test(fll))cat="calls"; }
+  if(cat==="skip"&&!/kumeler|clusters|ts_genes|clingen_ts/.test(n)&&!/küme|kume|cluster/.test(fll)){
+    const c=fl.split(sepOf(fl));
+    const fname=n.split("/").pop();
+    if(/hi_genes|clingen|_hi[._]|dosage|haplo/.test(fname))cat="hi";
+    else if(c.length>=4&&/^(chr)?[0-9XYM]+$/i.test(c[0])&&c.slice(3,8).some(x=>typExact(x)))cat="calls";
+    else if(/gene|refseq|gencode|ensembl|annot/.test(fname))cat="genes";
+    else if(c.length===5&&/^chr/i.test(c[0])&&/^(0|1|2|3|30|40)$/.test((c[4]||"").trim()))cat="hi";
+  }
+  const r={name,path,text,cat:null};setCat(r,cat);return r;
+}
+function numberControls(){let i=0;F.filter(f=>f.cat==="track"&&f.rel==="control").forEach(f=>{const m=f.path.match(/(kontrol|control|ctrl)[ _-]?(\d+)/i);f.ctlN=m?+m[2]:null});
+  const used=new Set(F.filter(f=>f.ctlN).map(f=>f.ctlN));F.filter(f=>f.cat==="track"&&f.rel==="control"&&!f.ctlN).forEach(f=>{do{i++}while(used.has(i));f.ctlN=i;used.add(i)})}
+
+/* ---------- parsers ---------- */
+function typ(t){t=String(t||"").toUpperCase();if(/DEL|LOSS|HEMIZ|NULLISOMY|MONOSOMY/.test(t))return"DEL";if(/DUP|GAIN|AMP|TRIPLIC|TRISOMY|INS.?DUP/.test(t))return"DUP";return null}
+function typExact(t){t=String(t||"").trim().toUpperCase().replace(/[<>]/g,"");return /^(DEL|DELETION|LOSS|CN_LOSS|HOMDEL|HETDEL)$/.test(t)?"DEL":/^(DUP|DUPLICATION|GAIN|CN_GAIN|AMP|AMPLIFICATION)$/.test(t)?"DUP":null}
+const num=x=>{if(x==null||x==="")return null;const v=+x;return Number.isFinite(v)?v:null};
+function typFromCN(cn,ch){if(cn==null)return null;const base=/X|Y/.test(ch)?null:2;if(base==null)return null;return cn<base?"DEL":cn>base?"DUP":null}
+function parseInterval(s){const m=String(s||"").replace(/,/g,"").match(/^(chr)?([0-9XYM]+)[:_](\d+)[-_](\d+)$/i);return m?{chrom:nchr(m[2]),start:+m[3],end:+m[4]}:null}
+const nk=x=>String(x).toLowerCase().replace(/^#/,"").replace(/[^a-z0-9]/g,"");
+function sepOf(l){return l.includes("\t")?"\t":(l.split(";").length>l.split(",").length?";":(l.includes(",")?",":/\s+/))}
+const CHR_K=["chromosome","chrom","chr","contig","chr_name","seqnames","seqname","chromosome_name","chrom_name","chr_id","#chrom","sequence"],
+  START_K=["start","begin","start.p","start_pos","chromstart","pos","start_position","cnv_start","startpos","start_bp","pos_start","from","beg","loc.start","txstart"],
+  END_K=["end","stop","end.p","end_pos","chromend","end_position","cnv_end","endpos","end_bp","pos_end","to","loc.end","txend"],
+  INT_K=["interval","region","locus","coordinates","position","cnv_region","target_region","coordinate"],
+  TYPE_K=["type","svtype","cnv","cnv_type","call","state","event","sv_type","variant_type","cnvtype","call_type","cnv_state","copy_state","status","alteration","direction","event_type","dosage","del_dup","deldup","variant","svclass"],
+  CN_K=["copy_number","cn","mlcn","copynumber","copy.number","cn_state","total_cn","copy_num","cnv_cn"];
+function parseCalls(text,name){
+  const out=[];const L=text.split(/\r?\n/);
+  if(/^#CHROM/m.test(text)){ // VCF
+    let samples=[];
+    for(const l of L){ if(!l)continue; if(l.startsWith("#CHROM")){samples=l.split("\t").slice(9);continue} if(l.startsWith("#"))continue;
+      const c=l.split("\t");if(c.length<8)continue;const info=Object.fromEntries(c[7].split(";").map(x=>{const i=x.indexOf("=");return i<0?[x,true]:[x.slice(0,i),x.slice(i+1)]}));
+      const alts=c[4].split(","),end=num(info.END)||(+c[1]+1),pass=c[6]==="PASS"||c[6]===".",ch=nchr(c[0]);
+      const keys=c[8]?c[8].split(":"):[];const per=samples.length?samples:[""];
+      per.forEach((s,si)=>{const v=c[9+si]?c[9+si].split(":"):[];const g=k=>{const j=keys.indexOf(k);return j>=0?v[j]:undefined};
+        const cn=num(g("CN"));let t=null;const gt=g("GT");
+        if(gt!=null){const idx=gt.split(/[\/|]/).map(Number).filter(x=>Number.isFinite(x)&&x>0);if(gt.split(/[\/|]/).every(x=>x==="."))return;if(idx.length)t=typ(alts[idx[0]-1]);else if(/^[0\/|]+$/.test(gt)&&!(cn!=null&&cn!==2))return}
+        t=t||typ(alts.length===1?alts[0]:"")||typ(info.SVTYPE)||typFromCN(cn,ch)||typ(c[2]);if(!t)return;
+        out.push({chrom:ch,start:+c[1],end,type:t,pass,cn,q:num(g("QS"))??num(c[5]),acmg:info.ACMG||"",genes:[],sample:s});});}
+    return out;}
+  const R=L.filter(l=>l.trim()&&!l.startsWith("##")&&!l.startsWith("@")&&!/^track|^browser/.test(l));if(!R.length)return out;
+  const sep=sepOf(R[0]);const unq=s=>s.trim().replace(/^"|"$/g,"");
+  const h=R[0].replace(/^#/,"").split(sep).map(s=>unq(s).toLowerCase());
+  const hasHead=h.some(x=>[...CHR_K,...START_K,...END_K,...INT_K,...TYPE_K,"sample","sample_id"].map(nk).includes(nk(x)));
+  if(!hasHead){ // BED-like: chrom start end ... DEL/DUP somewhere in columns 4-8
+    for(const l of R){const c=l.split(sep);if(c.length<4||!/^(chr)?[0-9XYM]+$/i.test(c[0]))continue;let t=null;for(let i=3;i<Math.min(c.length,9)&&!t;i++)t=typExact(c[i]);
+      if(!t)continue;out.push({chrom:nchr(c[0]),start:+c[1]+1,end:+c[2],type:t,pass:true,genes:[],sample:""})}
+    out.how="DEL/DUP column";return out;}
+  const hN=h.map(nk),ix=(...ks)=>{for(const k of ks){const i=hN.indexOf(nk(k));if(i>=0)return i}return -1};
+  const ic=ix(...CHR_K),is=ix(...START_K),ie=ix(...END_K),iint=ix(...INT_K),it=ix(...TYPE_K),
+    ig=ix("genes","gene","genler","gene_symbol"),ibf=ix("bf"),ir=ix("reads_ratio","ratio"),il2=ix("log2","log2_copy_ratio","mean_log2"),
+    inT=ix("n_targets","num.mark","num_targ","num_targets","probes","nexons","n_exons"),ikz=ix("cohort_z","kohort_z"),iko=ix("cohort_specific","kohort_ozgun"),
+    isv=ix("median_svdzrpkm"),icn=ix(...CN_K),iac=ix("acmg","acmg_class","classification"),ifl=ix("filter"),
+    iq=ix("q_some","qs","quality","qual","score"),ism=ix("sample","sample_id","sampleid","sample_name");
+  let bad=0;out.cols=h;
+  for(const l of R.slice(1)){const c=l.split(sep).map(unq);let loc=null;
+    if(ic>=0&&is>=0&&ie>=0&&c[ic])loc={chrom:nchr(c[ic]),start:+c[is],end:+c[ie]};else if(iint>=0)loc=parseInterval(c[iint]);
+    if(!loc||!Number.isFinite(loc.start)||!Number.isFinite(loc.end)){bad++;continue}
+    const cn=icn>=0?num(c[icn]):null,l2=il2>=0?num(c[il2]):null,ratio=ir>=0?num(c[ir]):null;
+    let t=it>=0?typ(c[it]):null;
+    if(!t&&it>=0){const v=(c[it]||"").trim();t=/^[-−]1?$|^down$|^low$/i.test(v)?"DEL":/^\+1?$|^up$|^high$/i.test(v)?"DUP":typFromCN(num(v),loc.chrom)}
+    if(!t){t=typFromCN(cn,loc.chrom);if(!t&&cn==null&&l2!=null&&!/X|Y/.test(loc.chrom))t=l2<=-0.25?"DEL":l2>0.2?"DUP":null}
+    if(!t){bad++;continue}
+    out.push({...loc,type:t,genes:ig>=0?(c[ig]||"").split(/[,;|]/).map(s=>s.trim()).filter(s=>s&&s!=="-"&&s!=="."):[],
+      bf:ibf>=0?num(c[ibf]):null,ratio,l2,nt:inT>=0?num(c[inT]):null,kz:ikz>=0?num(c[ikz]):null,oz:iko>=0?/evet|yes|true|^1$/i.test((c[iko]||"").trim()):null,
+      svdz:isv>=0?num(c[isv]):null,cn,q:iq>=0?num(c[iq]):null,acmg:iac>=0?(c[iac]||""):"",pass:ifl>=0?(c[ifl]==="PASS"||c[ifl]==="."):true,sample:ism>=0?(c[ism]||"").trim():""});}
+  out.bad=bad;out.how=it>=0?"type column “"+h[it]+"”":icn>=0?"copy number":il2>=0?"log2":"";return out;
+}
+/* ---------- small-variant VCF -> B-allele frequency ---------- */
+function isSnvVcf(text){let snv=0,cnv=0;const L=text.slice(0,2e6).split("\n");
+  for(const l of L){if(!l||l[0]==="#")continue;const c=l.split("\t",9);if(c.length<5)continue;
+    if(/<(DEL|DUP|CNV|CN\d)/i.test(c[4])||/SVTYPE=|;CN=|^CN=/.test(c[7]||""))cnv++;else if(/^[ACGTN*]+(,([ACGTN*]+|<NON_REF>|<\*>))*$/i.test(c[4])||c[4]==="."||/^<(NON_REF|\*)>$/.test(c[4]))snv++;
+    if(snv+cnv>=2000)break}
+  if(!snv&&!cnv){const h=text.slice(0,2e5);return /##FORMAT=<ID=AD[,>]/.test(h)&&!/##ALT=<ID=(DEL|DUP|CNV)/.test(h)&&!/##INFO=<ID=SVTYPE/.test(h)}   // header-only file
+  return snv>cnv}
+function bafRel(sample,path,i,n,pro){const t=(sample+" ").toLowerCase();
+  if(/mother|maternal|(^|[^a-z])(anne|mom|mum)([^a-z]|$)/.test(t))return "mother";if(/father|paternal|(^|[^a-z])(baba|dad)([^a-z]|$)/.test(t))return "father";
+  if(/sibling|brother|sister|karde[sş]/.test(t))return "sibling";if(/kontrol|control|ctrl/.test(t))return "control";
+  if(pro.includes(sample)||/hasta|patient|proband|index/.test(t))return "proband";
+  if(n===1)return relOf(path);return i===0?"proband":"off"}
+function parseBaf(text){const out=[];let samples=null,mk=null;const MIN_DP=10;
+  for(const l of text.split("\n")){if(!l)continue;if(l[0]==="#"){if(l.startsWith("#CHROM")){samples=l.split("\t").slice(9);if(!samples.length)samples=["sample"];
+        samples.forEach(s=>out.push({sample:s,T:{},n:0}))}continue}
+    const c=l.split("\t");if(c.length<8||c[3].length!==1)continue;const alt=c[4].split(",").filter(a=>!/^<(NON_REF|\*)>$/.test(a));
+    if(alt.length!==1||alt[0].length!==1||alt[0]==="."||alt[0]==="*")continue;   // biallelic SNVs only
+    const ch=nchr(c[0]),pos=+c[1],keys=(c[8]||"").split(":"),ia=keys.indexOf("AD"),iaf=keys.indexOf("AF"),ivf=keys.indexOf("VAF"),idp=keys.indexOf("DP"),iro=keys.indexOf("RO"),iao=keys.indexOf("AO"),igt=keys.indexOf("GT");
+    if(!c[8]){const af=/(?:^|;)AF=([\d.]+)/.exec(c[7]),dp=/(?:^|;)DP=(\d+)/.exec(c[7]);if(af&&dp&&+dp[1]>=MIN_DP&&out[0]){(out[0].T[ch]=out[0].T[ch]||[]).push([pos,+af[1],+dp[1],""]);out[0].n++}continue}
+    for(let si=0;si<out.length;si++){const v=(c[9+si]||"").split(":");let b=null,dp=null;
+      if(ia>=0&&v[ia]&&v[ia]!=="."){const ad=v[ia].split(",").map(Number);const t=ad.reduce((a,x)=>a+(x||0),0);if(t>0&&ad.length>=2){b=ad[1]/t;dp=t}}
+      if(b==null&&iro>=0&&iao>=0){const ro=+v[iro],ao=+v[iao];if(ro+ao>0){b=ao/(ro+ao);dp=ro+ao}}
+      if(b==null&&(iaf>=0||ivf>=0)){const f=+(v[iaf>=0?iaf:ivf]||"").split(",")[0];if(Number.isFinite(f)){b=f;dp=idp>=0&&Number.isFinite(+v[idp])&&v[idp]!==""?+v[idp]:null}}
+      if(b==null||!Number.isFinite(b)||b<0||b>1||(dp!=null&&dp<MIN_DP))continue;const o=out[si];(o.T[ch]=o.T[ch]||[]).push([pos,b,dp,igt>=0?v[igt]:""]);o.n++}}
+  out.forEach(o=>{for(const k in o.T)o.T[k].sort((a,b)=>a[0]-b[0])});return out}
+function bafIn(arr,s,e){if(!arr)return[];let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>1;if(arr[m][0]<s)lo=m+1;else hi=m}const o=[];for(let i=lo;i<arr.length&&arr[i][0]<=e;i++)o.push(arr[i]);return o}
+function parseTrace(text){const T={};let vi=3,first=true,sep="\t";
+  for(const l of text.split(/\r?\n/)){if(!l||/^track|^#|^browser|^@/.test(l))continue;const c=l.split(sep);
+    if(first){first=false;const h=c.map(x=>x.trim().toLowerCase());if(h.some(x=>["chromosome","chrom","contig","start","end"].includes(x))){
+      const j=["log2","log2_copy_ratio","value","zscore","svdzrpkm","z"].map(k=>h.indexOf(k)).find(j=>j>=0);vi=j>=0?j:3;continue}}
+    if(c.length<=vi)continue;const v=+c[vi];if(!Number.isFinite(v))continue;const ch=nchr(c[0]);(T[ch]=T[ch]||[]).push([+c[1],+c[2],v])}
+  for(const k in T)T[k].sort((a,b)=>a[0]-b[0]);return T}
+function parseBed(text,withScore){const T={};for(const l of text.split(/\r?\n/)){if(!l||/^track|^#|^browser/.test(l))continue;const c=l.split("\t");if(c.length<4)continue;
+  const ch=nchr(c[0]);(T[ch]=T[ch]||[]).push([+c[1],+c[2],c[3].trim(),withScore?(c[4]||"").trim():null])}for(const k in T)T[k].sort((a,b)=>a[0]-b[0]);return T}
+function parseSeg(text){const R={};const L=text.split(/\r?\n/);for(const l of L.slice(1)){if(!l)continue;const c=l.split("\t");if(c.length<6)continue;const id=c[0],ch=nchr(c[1]);
+  ((R[id]=R[id]||{})[ch]=R[id][ch]||[]).push([+c[2],+c[3],+c[5]])}for(const id in R)for(const ch in R[id])R[id][ch].sort((a,b)=>a[0]-b[0]);return R}
+function inRange(arr,s,e){if(!arr)return[];let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>1;if(arr[m][1]<s)lo=m+1;else hi=m}const o=[];for(let i=Math.max(0,lo-50);i<arr.length&&arr[i][0]<=e;i++)if(arr[i][1]>=s)o.push(arr[i]);return o}
+
+/* ---------- file groups UI ---------- */
+function drawGroups(skipped){
+  const box=$("#groups");
+  box.innerHTML=Object.entries(CAT).map(([k,[t,h]])=>{const fs=F.map((f,i)=>[f,i]).filter(([f])=>f.cat===k);if(k==="skip"&&!fs.length)return "";
+    return `<div class="grp" data-cat="${k}"><span class="cnt">${fs.length||""}</span><h3>${t}</h3><div class="hint">${h}</div>${fs.map(([f,i])=>fileRow(f,i)).join("")}</div>`}).join("")
+    +(skipped?`<div class="note" style="grid-column:1/-1">${skipped} file(s) ignored (indexes, alignments, hidden or unsupported files).</div>`:"");
+  box.querySelectorAll("[data-i]").forEach(e=>{const f=F[+e.dataset.i],k=e.dataset.k;
+    e.onchange=()=>{if(k==="cat"){setCat(f,e.value);numberControls();drawGroups();}else if(/^baf\d+$/.test(k)){const b=f.bafS[+k.slice(3)];b.rel=e.value;b.auto=false}else{f[k]=k==="caller"?cleanCaller(e.value):e.value;if(k==="rel"||k==="caller"){numberControls();drawGroups()}}build()}});
+  box.querySelectorAll(".grp").forEach(g=>{["dragenter","dragover"].forEach(t=>g.addEventListener(t,e=>{e.preventDefault();e.stopPropagation();g.classList.add("over")}));
+    g.addEventListener("dragleave",()=>g.classList.remove("over"));
+    g.addEventListener("drop",e=>onDrop(e,g.dataset.cat))});
+}
+function fileRow(f,i){
+  const catSel=`<select data-i="${i}" data-k="cat" title="Group">${Object.entries(CAT).map(([k,[t]])=>`<option value="${k}" ${k===f.cat?"selected":""}>${t}</option>`).join("")}</select>`;
+  let extra="";
+  if(f.cat==="calls"){const col=callerColor(f.caller);extra=`<span class="sw" style="background:${col}"></span><input class="cl" list="knownCallers" data-i="${i}" data-k="caller" value="${esc(f.caller)}" title="Caller name">`
+    +(f.samples.length>1?`<select data-i="${i}" data-k="sample" title="Sample in this file">${f.samples.map(s=>`<option ${s===f.sample?"selected":""}>${esc(s)}</option>`).join("")}</select>`:"")
+    +(f.calls.length?`<span class="note" title="${esc(f.calls.how?"Type read from "+f.calls.how:"")}">${f.calls.length} calls${f.calls.bad?` · ${f.calls.bad} row(s) skipped`:""}</span>`
+      :`<span class="note bad" title="Columns found: ${esc((f.calls.cols||[]).join(", "))}">0 calls: no chrom/start/end + type, CN or log2 column recognised</span>`)}
+  if(f.cat==="track")extra=`<select data-i="${i}" data-k="rel" title="Sample">${Object.entries(RELS).map(([k,v])=>`<option value="${k}" ${k===f.rel?"selected":""}>${v}${k==="control"&&f.rel==="control"?" "+f.ctlN:""}</option>`).join("")}</select>`
+    +`<select data-i="${i}" data-k="metric" title="Values"><option value="log2" ${f.metric==="log2"?"selected":""}>log2 ratio</option><option value="z" ${f.metric==="z"?"selected":""}>z-score (e.g. CoNIFER)</option></select>`;
+  if(f.cat==="baf")extra=f.bafS.map((b,j)=>`<span class="bs">${f.bafS.length>1?`<span class="note">${esc(b.sample)}</span>`:""}<select data-i="${i}" data-k="baf${j}" title="Shown as">${Object.entries({...RELS,off:"Not shown"}).map(([k,v])=>`<option value="${k}" ${k===b.rel?"selected":""}>${v}</option>`).join("")}</select><span class="note">${b.n.toLocaleString(LOC)} SNVs</span></span>`).join("")
+    +(f.bafS.every(b=>!b.n)?`<span class="note bad">no SNV with allele depths (FORMAT AD, AF or RO/AO) and depth ≥ 10 was found</span>`:"");
+  if(f.cat==="skip"){const fl=firstLine(f.text),hN=fl.replace(/^#/,"").split(sepOf(fl)).map(nk),hv=K=>K.some(k=>hN.includes(nk(k)));
+    if(hv(CHR_K)&&hv(START_K)&&hv(END_K)||hv(INT_K))extra=`<span class="note" title="Columns found: ${esc(fl.split(sepOf(fl)).join(", "))}">has coordinates but no DEL/DUP type, CN or log2 column. If this is a call file, name one column “type” (DEL/DUP) or “CN” and add it again</span>`}
+  return `<div class="file"><span class="n" title="${esc(f.path)}">${esc(f.name)}</span>${catSel}${extra}</div>`;
+}
+function callerColor(name){const k=KNOWN.find(x=>x[0]===name);if(k)return k[2];const others=[...new Set(F.filter(f=>f.cat==="calls").map(f=>f.caller))].filter(n=>!KNOWN.some(x=>x[0]===n));
+  const used=new Set(F.filter(f=>f.cat==="calls").map(f=>(KNOWN.find(x=>x[0]===f.caller)||[])[2]).filter(Boolean));const free=EXTRA.filter(c=>!used.has(c));
+  return (free.length?free:EXTRA)[Math.max(0,others.indexOf(name))%(free.length||EXTRA.length)]}
+function lighten(hex,a){const n=parseInt(hex.slice(1),16),r=n>>16,g=n>>8&255,b=n&255,m=v=>Math.round(v+(255-v)*a);return `rgb(${m(r)},${m(g)},${m(b)})`}
+
+/* ---------- merging ---------- */
+function build(){
+  G=BUILDS[$("#build").value];
+  const callFiles=F.filter(f=>f.cat==="calls");
+  const names=[...new Set(callFiles.map(f=>f.caller))].sort((a,b)=>{const ia=KNOWN.findIndex(x=>x[0]===a),ib=KNOWN.findIndex(x=>x[0]===b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b)});
+  const CS=names.map(n=>{const k=KNOWN.find(x=>x[0]===n);return {name:n,color:callerColor(n),abbr:k?k[3]:n.slice(0,6)}});
+  const csIdx=Object.fromEntries(CS.map((c,i)=>[c.name,i]));
+  const usePass=$("#fPass").checked;const n={};CS.forEach(c=>n[c.name]=0);
+  const C=[];
+  callFiles.forEach(f=>f.calls.forEach(c=>{if(f.sample&&c.sample&&c.sample!==f.sample)return;if(usePass&&c.pass===false)return;C.push({...c,caller:f.caller});n[f.caller]++}));
+  const tracks=F.filter(f=>f.cat==="track").map(f=>({rel:f.rel,metric:f.metric,ctlN:f.ctlN,label:f.rel==="control"?"Control "+f.ctlN:RELS[f.rel],tr:f.trace}));
+  const relOrder={proband:0,mother:1,father:2,sibling:3,control:4};
+  // grouped by value type (all log2 panels, then all z-score panels), each as proband, mother, father, sibling, controls
+  tracks.sort((a,b)=>(a.metric==="log2"?0:1)-(b.metric==="log2"?0:1)||relOrder[a.rel]-relOrder[b.rel]||(a.ctlN||0)-(b.ctlN||0));
+  let genes=null,hi=null,seg=null;F.forEach(f=>{if(f.cat==="genes")genes=f.bed;if(f.cat==="hi")hi=f.bed;if(f.cat==="seg")seg=f.seg});
+  // one-line status: what was read, and what is missing for the region view
+  { const nc=C.length,raw=callFiles.reduce((a,f)=>a+f.calls.length,0),parts=[];
+    parts.push(`${F.length} file(s): ${callFiles.length} call set file(s), ${tracks.length} coverage track(s)${F.some(f=>f.cat==="baf")?", variant VCF":""}${seg?", cohort":""}${genes?", genes":""}${hi?", ClinGen":""}`);
+    parts.push(`${nc} call(s) shown`+(raw>nc?` (${raw-nc} hidden by the PASS filter or the sample selection)`:""));
+    let warn=false;
+    if(callFiles.length&&!raw){parts.push("no calls could be read from the call set file(s): check the chrom/start/end and type (or CN) columns");warn=true}
+    else if(nc&&!tracks.length)parts.push("add coverage tracks (bedGraph) to see the coverage in the region view");
+    if(F.length)status(parts.join(" · "),warn);else status("");
+  }
+  if(!C.length&&!tracks.length){$("#main").classList.add("hidden");S=null;return}
+  $("#main").classList.remove("hidden");
+  const byKey={};C.forEach(c=>(byKey[c.chrom+"|"+c.type]=byKey[c.chrom+"|"+c.type]||[]).push(c));
+  let K=[];
+  for(const k in byKey){const a=byKey[k].sort((x,y)=>x.start-y.start);let g=null;
+    for(const c of a){if(g&&c.start<=g.end){g.calls.push(c);g.end=Math.max(g.end,c.end)}else{g={chrom:c.chrom,type:c.type,start:c.start,end:c.end,calls:[c]};K.push(g)}}}
+  const ci=c=>{const i=CHR.indexOf(c);return i<0?99:i};
+  K.sort((a,b)=>ci(a.chrom)-ci(b.chrom)||a.chrom.localeCompare(b.chrom)||a.start-b.start);
+  const proLog=tracks.find(t=>t.rel==="proband"&&t.metric==="log2")||tracks.find(t=>t.rel==="proband");
+  const parents=["mother","father"].filter(r=>tracks.some(t=>t.rel===r));
+  K.forEach((k,i)=>{k.id=i+1;k.size=k.end-k.start+1;k.callers=CS.map(c=>c.name).filter(x=>k.calls.some(c=>c.caller===x));k.combo=k.callers.join("+");
+    const g=new Set();k.calls.forEach(c=>c.genes.forEach(x=>g.add(x)));
+    if(genes){inRange(genes[k.chrom],k.start,k.end).forEach(x=>{if(!/^(MIR|LOC|LINC|SNOR)/.test(x[2]))g.add(x[2])})}
+    k.genler=[...g];
+    k.by={};k.calls.forEach(c=>{if(!k.by[c.caller])k.by[c.caller]=c});
+    k.hi=hi?inRange(hi[k.chrom],k.start,k.end).filter(x=>x[3]==="3").map(x=>x[2]):[];
+    const ntc=k.calls.find(c=>c.nt);k.nt=ntc?ntc.nt:(proLog&&proLog.tr[k.chrom]?inRange(proLog.tr[k.chrom],k.start,k.end).length:null);
+    k.cn=(k.calls.find(c=>c.cn!=null)||{}).cn??null;k.acmg=(k.calls.find(c=>c.acmg)||{}).acmg||"";
+    const kz=k.calls.find(c=>c.kz!=null);k.kz=kz?kz.kz:null;
+    // cohort-specific only when every caller that reports this flag agrees
+    const ozr=k.calls.filter(c=>c.oz!=null);k.oz=ozr.length>0&&ozr.every(c=>c.oz);
+    k.par=parents.length?parentEvidence(k,tracks):null});
+  const combos={};K.forEach(k=>combos[k.combo]=(combos[k.combo]||0)+1);
+  const CC=comboColors(combos,CS);
+  const bafs=F.filter(f=>f.cat==="baf").flatMap(f=>f.bafS).filter(b=>b.rel!=="off"&&b.n).map(b=>({...b,label:RELS[b.rel]||b.rel}))
+    .sort((a,b)=>relOrder[a.rel]-relOrder[b.rel]);
+  const prev=cur;S={K,n,CS,csIdx,combos,CC,tracks,genes,hi,seg,parents,bafs};sel=null;S.prev=prev;
+  $("#fPar").classList.toggle("hidden",!parents.length);render0();
+}
+function comboColors(combos,CS){const pal=["#2F62A8","#7A4FA0","#2E7D6B","#C0392B","#8C6D1F","#1F7A8C","#9C3D6B","#4F6D1F","#555E6E"];const out={};let p=0;
+  const ord=Object.keys(combos).sort((a,b)=>b.split("+").length-a.split("+").length||combos[b]-combos[a]);
+  ord.forEach(c=>{const parts=c.split("+");if(parts.length===CS.length&&CS.length>1)out[c]="var(--ink)";else if(parts.length===1)out[c]=lighten(CS.find(x=>x.name===c).color,.42);else out[c]=pal[p++%pal.length]});
+  if(CS.length===3){const [a,b,d]=CS.map(x=>x.name);const set=(k,v)=>{if(out[k])out[k]=v};set(a+"+"+b,"#2F62A8");set(b+"+"+d,"#7A4FA0");set(a+"+"+d,"#2E7D6B")}
+  return out}
+function trackMean(t,ch,s,e){const p=inRange(t.tr[ch],s,e);if(!p.length)return null;return p.reduce((a,x)=>a+x[2],0)/p.length}
+function parentEvidence(k,tracks){const o={};
+  for(const r of ["mother","father"]){const t=tracks.find(x=>x.rel===r&&x.metric==="log2")||tracks.find(x=>x.rel===r);if(!t){o[r]=null;continue}
+    const m=trackMean(t,k.chrom,k.start,k.end);if(m==null){o[r]={mean:null,has:null,metric:t.metric};continue}
+    const [dl,du]=t.metric==="log2"?[-0.4,0.3]:[-1.5,1.5];o[r]={mean:m,has:k.type==="DEL"?m<dl:m>du,metric:t.metric}}
+  const m=o.mother&&o.mother.has,f=o.father&&o.father.has;
+  const known=[o.mother,o.father].filter(x=>x&&x.has!=null);
+  o.status=!known.length?"":m&&f?"both":m?"maternal":f?"paternal":known.length===2?"absent":"absent*";
+  return o}
+const PAR_TXT={both:"both parents",maternal:"maternal",paternal:"paternal",absent:"not seen in parents","absent*":"not seen in tested parent","":"–"};
+
+/* ---------- summary ---------- */
+function venn(){
+  const CS=S.CS,c=S.combos,g=x=>c[x]||0;if(CS.length<2||CS.length>3)return "";
+  const nm=CS.map(x=>x.name),col=CS.map(x=>x.color);
+  if(CS.length===2){const W=300,H=200;let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}">`;[[115,0],[185,1]].forEach(([x,i])=>s+=`<circle cx="${x}" cy="105" r="72" fill="${col[i]}" fill-opacity=".18" stroke="${col[i]}" stroke-width="2"/>`);
+    const t=(x,y,v,b)=>`<text x="${x}" y="${y}" text-anchor="middle" font-size="${b?20:17}" font-weight="${b?700:600}" fill="var(--ink)">${v}</text>`;
+    s+=t(85,110,g(nm[0]))+t(215,110,g(nm[1]))+t(150,110,g(nm[0]+"+"+nm[1]),1);
+    s+=`<text x="60" y="20" font-size="14" fill="${col[0]}" font-weight="700">${esc(nm[0])}</text><text x="240" y="20" font-size="14" fill="${col[1]}" font-weight="700" text-anchor="end">${esc(nm[1])}</text>`;return s+"</svg>"}
+  const W=330,H=290,P=[[120,105],[210,105],[165,180]],r=78;const [A,B,D]=nm;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}">`;
+  P.forEach((p,i)=>s+=`<circle cx="${p[0]}" cy="${p[1]}" r="${r}" fill="${col[i]}" fill-opacity=".18" stroke="${col[i]}" stroke-width="2"/>`);
+  const t=(x,y,v,b)=>`<text x="${x}" y="${y}" text-anchor="middle" font-size="${b?20:17}" font-weight="${b?700:600}" fill="var(--ink)">${v}</text>`;
+  s+=t(85,95,g(A))+t(245,95,g(B))+t(165,225,g(D))+t(165,80,g(A+"+"+B))+t(125,160,g(A+"+"+D))+t(205,160,g(B+"+"+D))+t(165,132,g(A+"+"+B+"+"+D),1);
+  s+=`<text x="40" y="22" font-size="14" fill="${col[0]}" font-weight="700">${esc(A)}</text><text x="290" y="22" font-size="14" fill="${col[1]}" font-weight="700" text-anchor="end">${esc(B)}</text><text x="165" y="${H-6}" font-size="14" fill="${col[2]}" font-weight="700" text-anchor="middle">${esc(D)}</text>`;
+  return s+"</svg>";
+}
+function comboOrder(){return Object.keys(S.combos).sort((a,b)=>b.split("+").length-a.split("+").length||S.combos[b]-S.combos[a])}
+function render0(){
+  const K=S.K,CS=S.CS;
+  const st=CS.map(c=>[c.name+" calls",S.n[c.name]]).concat([["Events (merged)",K.length]]);
+  if(CS.length>1)st.push(["≥ 2 callers",K.filter(k=>k.callers.length>=2).length]);
+  if(CS.length>2)st.push([`All ${CS.length} callers`,K.filter(k=>k.callers.length===CS.length).length]);
+  if(S.parents.length)st.push(["Not seen in parents",K.filter(k=>k.par&&k.par.status==="absent").length]);
+  $("#stats").innerHTML=st.map(([a,b])=>`<div class="stat"><b>${b}</b><span>${esc(a)}</span></div>`).join("");
+  $("#vennbox").innerHTML=venn();
+  const mx=Math.max(1,...Object.values(S.combos));
+  $("#combos").innerHTML=comboOrder().map(c=>{const has=n=>c.split("+").includes(n);
+    return `<div class="combo" data-c="${esc(c)}"><div class="dots">${CS.map(x=>`<span class="dot ${has(x.name)?"f":""}" title="${esc(x.name)}" style="background:${has(x.name)?x.color:"transparent"}"></span>`).join("")}</div>
+    <div class="lab">${esc(c.replaceAll("+"," + "))}</div><div class="bar" style="width:${Math.max(4,S.combos[c]/mx*420)}px;background:${S.CC[c]}"></div><div class="num">${S.combos[c]}</div></div>`}).join("");
+  document.querySelectorAll(".combo").forEach(e=>e.onclick=()=>{filt.combo=filt.combo===e.dataset.c?"":e.dataset.c;$("#fCombo").value=filt.combo;render()});
+  if(filt.combo&&!S.combos[filt.combo])filt.combo="";
+  $("#fCombo").innerHTML=`<option value="">All combinations</option>`+comboOrder().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");$("#fCombo").value=filt.combo;
+  // table header
+  const cols=[["id","#"],["loc","Region"],["type","Type"],["size","Size"],["combo","Callers"],["nt","Targets"],["cn","CN"],["ev","Evidence"],["kz","Cohort z"]]
+    .concat(S.parents.length?[["par","Parents"]]:[]).concat([["acmg","Class"],["gen","Genes"]]);
+  $("#tbl thead").innerHTML=`<tr>${cols.map(([k,t])=>`<th data-k="${k}">${t}</th>`).join("")}</tr>`;
+  document.querySelectorAll("th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=sortK===k?-sortDir:1;sortK=k;render()});
+  render();
+  if(!K.length){$("#plot").innerHTML="";$("#dinfo").textContent="No calls loaded yet: type a locus to view the coverage tracks.";return}
+  // open the most supported event: most callers, then the caller's ACMG class (pathogenic > likely pathogenic > VUS > benign),
+  // then ClinGen HI gene, then cohort-specific / not in parents, then strongest score
+  const acmgW=k=>{const a=k.calls.map(c=>String(c.acmg||"")).join(" ");return /likely\s*pathogenic/i.test(a)?3e5:/pathogenic/i.test(a)?4e5:/benign/i.test(a)?-2e5:0};
+  const score=k=>k.callers.length*1e6+acmgW(k)+(k.hi.length?1e5:0)+(k.oz?5e4:0)+(k.par&&k.par.status==="absent"?5e4:0)+Math.min(49999,Math.max(0,...k.calls.map(c=>c.bf||0)));
+  const pv=S.prev;delete S.prev;
+  if(pv){const same=pv.k&&K.find(x=>x.chrom===pv.k.chrom&&x.type===pv.k.type&&x.start===pv.k.start&&x.end===pv.k.end);
+    if(same)pick(same.id,false);else region(pv.ch,pv.s,pv.e,null,pv.exact);return}
+  const k=K.reduce((b,x)=>!b||score(x)>score(b)?x:b,null);if(k)pick(k.id,false);
+}
+function pass(k){if(filt.combo&&k.combo!==filt.combo)return false;if($("#fType").value&&k.type!==$("#fType").value)return false;
+  if($("#fMulti").checked&&k.callers.length<2)return false;if($("#fOz").checked&&!k.oz)return false;
+  const pf=$("#fPar").value;if(pf&&!(k.par&&(k.par.status===pf||(pf==="absent"&&k.par.status==="absent*"))))return false;
+  const g=$("#fGene").value.trim().toUpperCase();if(g){const G=k.genler.map(x=>x.toUpperCase());
+    if(geneExact(g)?!G.includes(g):!G.some(x=>x.startsWith(g)))return false}return true}
+let _ge=null;function geneExact(g){if(!_ge||_ge.g!==g||_ge.S!==S)_ge={g,S,v:S.K.some(k=>k.genler.some(x=>x.toUpperCase()===g))};return _ge.v}
+function genome(L){const W=1400,lh=34,top=10,lw=56,H=top+CHR.length*lh+10,mxl=G.chr1,nC=S.CS.length;
+  // colour and height by number of supporting callers: 1 = white (outlined), 2 = green, 3 or more = red
+  const lvl=k=>Math.min(k.callers.length,3),HT=[0,6,11,15],FILL=["","#FFFFFF","#2E9E4F","#D62F2F"],EDGE=["","#8A97A3","#1E6E37","#9E1F1F"];
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}">`;
+  CHR.forEach((c,i)=>{const y=top+i*lh+lh/2,w=(W-lw-10)*G[c]/mxl;s+=`<text x="${lw-8}" y="${y+4}" font-size="12" fill="var(--mut)" text-anchor="end">${c.replace("chr","")}</text><rect x="${lw}" y="${y-1}" width="${w}" height="2" fill="var(--line)"/>`});
+  [...L].sort((a,b)=>a.callers.length-b.callers.length).forEach(k=>{const i=CHR.indexOf(k.chrom);if(i<0)return;const v=lvl(k),y=top+i*lh+lh/2,sc=(W-lw-10)/mxl,bw=sc*(k.end-k.start),
+    w=Math.max(v>=2?4:3,bw),x=lw+sc*k.start+bw/2-w/2,h=HT[v],yy=k.type==="DUP"?y-h-2:y+2,isS=sel===k.id;
+    s+=`<rect x="${x}" y="${yy}" width="${w}" height="${h}" fill="${FILL[v]}" stroke="${isS?"var(--acc)":EDGE[v]}" stroke-width="${isS?2.5:0.8}" data-id="${k.id}" style="cursor:pointer"><title>${k.chrom}:${k.start}-${k.end} ${k.type} · ${k.callers.length} caller(s): ${esc(k.combo)} · ${esc(k.genler.slice(0,4).join(","))}</title></rect>`});
+  const cnt=[0,0,0,0];L.forEach(k=>cnt[lvl(k)]++);
+  const sw=v=>`<svg width="12" height="16"><rect x="2" y="${15-HT[v]}" width="8" height="${HT[v]}" fill="${FILL[v]}" stroke="${EDGE[v]}" stroke-width="0.8"/></svg>`;
+  const leg=`<div id="gleg" class="note"><span>${sw(1)}1 caller: ${cnt[1]}</span>`+(nC>=2?`<span>${sw(2)}2 callers: ${cnt[2]}</span>`:"")+(nC>=3?`<span>${sw(3)}3 or more callers: ${cnt[3]}</span>`:"")
+    +`<span>duplications above, deletions below the chromosome · click an event to open it</span></div>`;
+  $("#genome").innerHTML=s+"</svg>"+leg;$("#genome").querySelectorAll("rect[data-id]").forEach(e=>e.onclick=()=>pick(+e.dataset.id))}
+const f2=x=>x==null||Number.isNaN(x)?"–":esc(typeof x==="number"?+x.toPrecision(4):x);
+function evid(c){const p=[];if(c.bf!=null)p.push("BF "+f2(c.bf));if(c.ratio!=null)p.push("ratio "+f2(c.ratio));if(c.svdz!=null)p.push("SVD-ZRPKM "+f2(c.svdz));
+  if(c.l2!=null&&c.ratio==null)p.push("log2 "+f2(c.l2));if(c.q!=null&&c.bf==null)p.push("Q "+f2(c.q));if(c.cn!=null)p.push("CN "+f2(c.cn));return p.join(", ")}
+function evShort(k){return S.CS.filter(cs=>k.by[cs.name]).map(cs=>{const c=k.by[cs.name];const v=c.bf!=null?"BF "+f2(c.bf):c.svdz!=null?f2(c.svdz):c.q!=null?"Q "+f2(c.q):c.l2!=null?f2(c.l2):c.cn!=null?"CN"+f2(c.cn):"✓";return `${esc(cs.abbr)} ${v}`}).join(" · ")}
+function v(k,key){switch(key){case"loc":return CHR.indexOf(k.chrom)*1e10+k.start;case"cn":return k.cn??9;case"kz":return k.kz??0;case"acmg":return k.acmg;case"gen":return k.genler.join(",");
+  case"ev":return Math.max(0,...k.calls.map(c=>c.bf||0));case"par":return k.par?k.par.status:"";case"combo":return k.callers.length*100+(S.combos[k.combo]||0);default:return k[key]??-1}}
+function chip(name){const cs=S.CS.find(x=>x.name===name);return `<span class="chip" style="background:${cs.color}" title="${esc(name)}">${esc(cs.abbr)}</span>`}
+function table(L){L=[...L].sort((a,b)=>{const x=v(a,sortK),y=v(b,sortK);return (x>y?1:x<y?-1:0)*sortDir});$("#cnt").textContent=L.length+" events";
+  $("#tbl tbody").innerHTML=L.map(k=>`<tr data-id="${k.id}" class="${sel===k.id?"sel":""}"><td>${k.id}</td><td>${esc(k.chrom)}:${k.start.toLocaleString(LOC)}-${k.end.toLocaleString(LOC)}</td>
+  <td class="${k.type.toLowerCase()}">${k.type}</td><td>${kb(k.size)}</td><td>${k.callers.map(chip).join("")}</td>
+  <td>${f2(k.nt)}</td><td>${f2(k.cn)}</td><td>${evShort(k)}</td><td>${k.kz!=null?f2(k.kz)+(k.oz?" ★":""):(k.oz?"★":"–")}</td>
+  ${S.parents.length?`<td>${k.par?PAR_TXT[k.par.status]:"–"}</td>`:""}<td>${esc(k.acmg||"–")}</td><td>${esc(k.genler.slice(0,6).join(", "))}${k.genler.length>6?"…":""}</td></tr>`).join("");
+  $("#tbl tbody").querySelectorAll("tr").forEach(e=>e.onclick=()=>pick(+e.dataset.id))}
+["#fCombo","#fType","#fMulti","#fOz","#fGene","#fPar"].forEach(s=>$(s).oninput=()=>{filt.combo=$("#fCombo").value;render()});
+$("#fPass").onchange=()=>build();$("#build").onchange=()=>build();$("#showIds").onchange=()=>cur&&region(cur.ch,cur.s,cur.e,cur.k,cur.exact);
+function render(){if(!S)return;const L=S.K.filter(pass);document.querySelectorAll(".combo").forEach(e=>e.classList.toggle("on",e.dataset.c===filt.combo));genome(L);table(L)}
+
+/* ---------- region view ---------- */
+function pick(id,scroll=true){sel=id;const k=S.K.find(k=>k.id===id);render();region(k.chrom,k.start,k.end,k);if(scroll)$("#detail").scrollIntoView({behavior:"smooth",block:"start"})}
+function goto(){if(!S)return;const q=$("#loc").value.trim().replace(/,/g,"");let m=q.match(/^(chr)?([0-9XYM]+)[:\s]+(\d+)\s*-\s*(\d+)$/i);
+  if(m){region(nchr(m[2]),+m[3],+m[4],null,true);return}
+  m=q.match(/^(chr)?([0-9XYM]+)[:\s]+(\d+)$/i);if(m){region(nchr(m[2]),Math.max(1,+m[3]-25000),+m[3]+25000,null,true);return}
+  const g=q.toUpperCase();if(S.genes){for(const ch in S.genes){const x=S.genes[ch].find(r=>r[2].toUpperCase()===g);if(x){
+    // an event in the gene opens as that event (most callers first); otherwise the gene region is shown
+    const ev=S.K.filter(k=>k.chrom===ch&&k.start<=x[1]&&k.end>=x[0]).sort((a,b)=>b.callers.length-a.callers.length||(b.end-b.start)-(a.end-a.start))[0];
+    if(ev){pick(ev.id);return}region(ch,x[0],x[1],null);return}}}
+  const k=S.K.find(k=>k.genler.map(x=>x.toUpperCase()).includes(g));if(k){pick(k.id);return}
+  alert("Not found: "+q+(S.genes?"":" (drop a gene BED file to enable search by gene symbol)"))}
+$("#bGo").onclick=goto;$("#loc").onkeydown=e=>{if(e.key==="Enter")goto()};
+$("#flank").onchange=()=>cur&&region(cur.ch,cur.s,cur.e,cur.k,cur.exact);document.querySelectorAll("input[name=xm]").forEach(r=>r.onchange=()=>cur&&region(cur.ch,cur.s,cur.e,cur.k,cur.exact));
+function region(ch,rs,re_,k,exact){
+  cur={ch,s:rs,e:re_,k,exact};const fl=exact?0:(re_-rs+1)*(+$("#flank").value);const ws=Math.max(1,Math.round(rs-fl)),we=Math.max(ws+100,Math.round(re_+fl));
+  const T=S.tracks.map(t=>({...t,pts:inRange(t.tr[ch],ws,we)})).filter(t=>t.pts.length);
+  const gidx=$("input[name=xm]:checked").value==="idx";
+  const evs=S.K.filter(x=>x.chrom===ch&&x.end>=ws&&x.start<=we),calls=evs.flatMap(x=>x.calls);
+  const ref=T.find(t=>t.rel==="proband")||T[0];const tgt=ref?ref.pts.map(p=>[p[0],p[1]]):[];
+  const segIds=S.seg?Object.keys(S.seg):[];
+  const W=1300,L=210,R=20,nT=tgt.length;
+  const X=(gidx&&nT)?(pos=>{let lo=0,hi=nT;while(lo<hi){const m=(lo+hi)>>1;if(tgt[m][1]<pos)lo=m+1;else hi=m}const i=Math.min(lo,nT-1);
+        const a=tgt[i],fr=a[1]>a[0]?Math.max(0,Math.min(1,(pos-a[0])/(a[1]-a[0]))):0.5;return L+(i+(pos<a[0]?0:fr))/nT*(W-L-R)})
+      :(pos=>L+(pos-ws)/(we-ws)*(W-L-R));
+  const XP=p=>{if(!gidx||!nT)return X((p[0]+p[1])/2);let lo=0,hi=nT;while(lo<hi){const m=(lo+hi)>>1;if(tgt[m][1]<p[0])lo=m+1;else hi=m}
+    if(lo>=nT||tgt[lo][0]>p[1])return NaN;return L+(lo+0.5)/nT*(W-L-R)};
+  let y=10,s="";const lab=(t,yy,c="var(--ink)",w=600)=>`<text x="${L-12}" y="${yy}" font-size="15" text-anchor="end" fill="${c}" font-weight="${w}">${t}</text>`;
+  S.CS.forEach(cs=>{s+=lab(esc(cs.name),y+13,cs.color);calls.filter(c=>c.caller===cs.name).forEach(c=>{const x0=X(Math.max(c.start,ws)),x1=X(Math.min(c.end,we));
+    s+=`<rect x="${x0}" y="${y+2}" width="${Math.max(3,x1-x0)}" height="14" rx="3" fill="${cs.color}" opacity="${c.type==="DEL"?1:.85}"><title>${esc(cs.name)} ${c.type}: ${c.chrom}:${c.start}-${c.end}${evid(c)?" · "+evid(c):""}</title></rect>`});y+=22});
+  y+=8;
+  function panel(t){const pro=t.rel==="proband",H=pro?150:95,yr=t.metric==="log2"?[-2.2,1.6]:[-5,5],TOP=y,Y=v=>TOP+(yr[1]-Math.max(yr[0],Math.min(yr[1],v)))/(yr[1]-yr[0])*H;
+    const ref=t.metric==="log2"?[[0,"#999"],[-1,"#B8541B",1],[0.58,"#2F62A8",1]]:[[0,"#999"],[1.5,"#2F62A8",1],[-1.5,"#B8541B",1]];
+    const unit=t.metric==="log2"?"log2 ratio":"z-score";
+    let o=lab(esc(t.label),TOP+H/2-4,pro?"var(--ink)":t.rel==="control"?"var(--mut)":"var(--acc)")+`<text x="${L-12}" y="${TOP+H/2+14}" font-size="12" text-anchor="end" fill="var(--mut)">${unit}</text>`;
+    o+=`<rect x="${L}" y="${TOP}" width="${W-L-R}" height="${H}" fill="none" stroke="var(--line)"/>`;
+    ref.forEach(([v,c,d])=>o+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${c}" ${d?'stroke-dasharray="6 4"':""} opacity=".7"/><text x="${L+4}" y="${Y(v)-3}" font-size="11" fill="var(--mut)">${v}</text>`);
+    if(pro)evs.forEach(e=>{const x0=X(Math.max(e.start,ws)),x1=X(Math.min(e.end,we));o+=`<rect x="${x0}" y="${TOP}" width="${Math.max(3,x1-x0)}" height="${H}" fill="${e.type==="DEL"?"#B8541B":"#2F62A8"}" opacity=".08"/>`});
+    t.pts.forEach(p=>{const val=p[2],cx=XP(p);if(!isFinite(cx)||cx<L)return;o+=`<circle cx="${cx}" cy="${Y(val)}" r="${pro?4:3.2}" fill="${val>=0?"#E08A2E":"#2F62A8"}"><title>${ch}:${p[0]}-${p[1]} · ${val}</title></circle>`});
+    y+=H+16;return o}
+  T.forEach(t=>s+=panel(t));
+  // B-allele frequency of SNVs (reconCNV-style): heterozygous sites near 0.5 for two copies, 0.33/0.67 for three copies, absent (only 0 or 1) in a deletion
+  const B=(S.bafs||[]).map(b=>({...b,pts:bafIn(b.T[ch],ws,we)}));
+  B.forEach(b=>{const pro=b.rel==="proband",H=pro?120:90,TOP=y,Y=v=>TOP+7+(1-v)*(H-14);   /* 7 px margin keeps BAF 0 and 1 inside the frame */
+    s+=lab("BAF · "+esc(b.label),TOP+H/2-4,pro?"var(--ink)":b.rel==="control"?"var(--mut)":"var(--acc)")+`<text x="${L-12}" y="${TOP+H/2+14}" font-size="12" text-anchor="end" fill="var(--mut)">${b.pts.length} SNVs${gidx&&nT?" (on-target shown)":""}</text>`;
+    s+=`<rect x="${L}" y="${TOP}" width="${W-L-R}" height="${H}" fill="none" stroke="var(--line)"/>`;
+    if(pro)evs.forEach(e=>{const x0=X(Math.max(e.start,ws)),x1=X(Math.min(e.end,we));s+=`<rect x="${x0}" y="${TOP}" width="${Math.max(3,x1-x0)}" height="${H}" fill="${e.type==="DEL"?"#B8541B":"#2F62A8"}" opacity=".08"/>`});
+    [[0.5,"#999",0],[1/3,"#2F62A8",1],[2/3,"#2F62A8",1]].forEach(([v,c,d])=>s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${c}" ${d?'stroke-dasharray="6 4"':""} opacity=".6"/>`);
+    s+=`<text x="${L+4}" y="${Y(1)+11}" font-size="11" fill="var(--mut)">1</text><text x="${L+4}" y="${Y(0.5)-3}" font-size="11" fill="var(--mut)">0.5</text><text x="${L+4}" y="${Y(0)-3}" font-size="11" fill="var(--mut)">0</text>`;
+    b.pts.forEach(p=>{const cx=gidx&&nT?XP([p[0]-150,p[0]+150]):X(p[0]);  /* targets equally spaced: only variants within 150 bp of a target */if(!isFinite(cx)||cx<L||cx>W-R)return;const het=p[1]>=0.1&&p[1]<=0.9;
+      s+=`<circle cx="${cx}" cy="${Y(p[1])}" r="${het?(pro?3.6:3):2.2}" fill="${het?"#127A86":"var(--mut)"}" opacity="${het?0.9:0.35}"><title>${ch}:${p[0]} · BAF ${p[1].toFixed(2)} · depth ${p[2]??"n/a"}${p[3]?" · GT "+esc(p[3]):""}</title></circle>`});
+    y+=H+16});
+  if(segIds.length){const rh=segIds.length>30?7:12,show=$("#showIds").checked;s+=lab("Cohort (SEG)",y+10);y+=16;let n=0;
+    // the proband row: the sample selected in the call files, or an ID containing patient/proband/hasta/index
+    const proIds=new Set(F.filter(f=>f.cat==="calls").flatMap(f=>f.sample?[f.sample]:f.samples&&f.samples.length===1?f.samples:[]));
+    segIds.forEach(id=>{const pts=inRange(S.seg[id][ch],ws,we),isP=proIds.has(id)||/hasta|patient|proband|index/i.test(id);n++;
+      s+=`<text x="${L-12}" y="${y+rh-2}" font-size="${rh>8?11:8}" text-anchor="end" fill="${isP?"var(--acc)":"var(--mut)"}" font-weight="${isP?700:400}">${esc(show?id:isP?"Proband":"Sample "+n)}</text>`;
+      pts.forEach(p=>{const val=Math.max(-1.5,Math.min(1.5,p[2])),a=Math.min(1,Math.abs(val)/1.2);const x0=X(p[0]),x1=X(p[1]),xc=XP(p);
+        const w=gidx&&nT?(W-L-R)/nT:Math.max(1.5,x1-x0),x=gidx&&nT?xc-w/2:x0;if(!isFinite(x))return;
+        s+=`<rect x="${x}" y="${y}" width="${w}" height="${rh}" fill="${val>=0?"#E08A2E":"#2F62A8"}" opacity="${a}"/>`});
+      if(isP)s+=`<rect x="${L}" y="${y-0.5}" width="${W-L-R}" height="${rh+1}" fill="none" stroke="var(--acc)" stroke-width="1.5"/>`;y+=rh+1});y+=10}
+  if(S.genes){const Gn=inRange(S.genes[ch],ws,we).filter(g=>!/^(MIR|LOC|LINC|SNOR)/.test(g[2]));s+=lab("Genes",y+14);
+    Gn.forEach((g,i)=>{const x0=X(Math.max(g[0],ws)),x1=X(Math.min(g[1],we)),yy=y+4+(i%2)*22,hiG=S.hi&&inRange(S.hi[ch],g[0],g[1]).some(h=>h[2]===g[2]&&h[3]==="3");
+      s+=`<rect x="${x0}" y="${yy}" width="${Math.max(2,x1-x0)}" height="7" fill="${hiG?"var(--acc)":"var(--mut)"}"/><text x="${(x0+x1)/2}" y="${yy+19}" font-size="12" text-anchor="middle" fill="${hiG?"var(--acc)":"var(--txt)"}" font-weight="${hiG?700:400}">${esc(g[2])}</text>`});y+=52}
+  s+=`<text x="${L}" y="${y+12}" font-size="12" fill="var(--mut)">${ws.toLocaleString(LOC)}</text><text x="${W-R}" y="${y+12}" font-size="12" fill="var(--mut)" text-anchor="end">${we.toLocaleString(LOC)}</text><text x="${(L+W-R)/2}" y="${y+12}" font-size="12" fill="var(--mut)" text-anchor="middle">${ch} · ${gidx&&nT?`targets equally spaced (${nT} targets)`:"genomic coordinate"} · ${$("#build").value}</text>`;
+  y+=22;
+  $("#plot").innerHTML=`<svg id="regsvg" viewBox="0 0 ${W} ${y}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif">${s}</svg>`;
+  $("#dtitle").textContent=k?`Event ${k.id} · ${ch}:${k.start.toLocaleString(LOC)}-${k.end.toLocaleString(LOC)} · ${k.type} · ${kb(k.size)}`:`${ch}:${rs.toLocaleString(LOC)}-${re_.toLocaleString(LOC)}`;
+  $("#loc").value=`${ch}:${ws}-${we}`;
+  let info="";
+  if(k){info=`${k.callers.map(chip).join("")} Genes: <b>${esc(k.genler.join(", "))||"–"}</b>${k.hi.length?` · ClinGen HI score 3: <b>${esc(k.hi.join(", "))}</b>`:""}<br>`
+    +S.CS.filter(cs=>k.by[cs.name]).map(cs=>{const c=k.by[cs.name];return `${esc(cs.name)}: ${c.chrom}:${c.start}-${c.end}${evid(c)?" ("+evid(c)+")":""}${c.acmg?" · "+esc(c.acmg):""}${c.kz!=null?" · cohort z "+f2(c.kz):""}${c.oz?" · cohort-specific":""}`}).join("<br>");
+    if(B.length)info+="<br>BAF in the event (SNVs, depth ≥ 10): "+B.map(b=>{const q=bafIn(b.T[ch],k.start,k.end),h=q.filter(p=>p[1]>=0.1&&p[1]<=0.9),
+        m=h.length?h.map(p=>Math.abs(p[1]-0.5)).sort((a,c)=>a-c)[h.length>>1]:null;
+        return `${esc(b.label)} <b>${h.length}</b> of ${q.length} heterozygous${m!=null?` (median |BAF−0.5| ${m.toFixed(2)})`:""}`}).join(" · ");
+    if(k.par)info+=`<br>Parents (coverage-based, confirm independently): <b>${PAR_TXT[k.par.status]}</b>`+["mother","father"].filter(r=>k.par[r]).map(r=>` · ${RELS[r]} mean ${k.par[r].mean==null?"no data":f2(k.par[r].mean)}`).join("")}
+  else if(!T.length)info="No coverage tracks in this region.";
+  $("#dinfo").innerHTML=info;
+  $("#dleg").innerHTML=`<div class="leg"><span><i style="background:#2F62A8"></i>value &lt; 0</span><span><i style="background:#E08A2E"></i>value ≥ 0</span><span>Shading: merged event</span><span>Dashed: log2 −1 (CN1) · +0.58 (CN3) · z ±1.5</span>${S.bafs&&S.bafs.length?`<span><i style="background:#127A86"></i>BAF of a heterozygous SNV (dashed 0.33 / 0.67: three copies)</span>`:""}${S.genes&&S.hi?`<span><i style="background:var(--acc)"></i>ClinGen HI score 3 gene</span>`:""}</div>`;
+}
+/* ---------- buttons ---------- */
+// exported SVG: page colour variables are replaced by the light-theme colours and a white background is added,
+// so that the file looks the same in Inkscape, Illustrator, PowerPoint or a journal's figure system
+const SVG_COL={"--ink":"#0F2A3D","--txt":"#2F4254","--mut":"#5F7387","--line":"#D3DCE4","--acc":"#A5520F","--bg":"#FFFFFF","--card":"#FFFFFF"};
+function svgForExport(e){const vb=e.getAttribute("viewBox").split(" ").map(Number);
+  let t=e.outerHTML.replace(/var\((--[a-z]+)\)/g,(m,v)=>SVG_COL[v]||"#000000");
+  return t.replace(/^<svg([^>]*)>/,`<svg$1 width="${vb[2]}" height="${vb[3]}"><rect x="0" y="0" width="${vb[2]}" height="${vb[3]}" fill="#FFFFFF"/>`)}
+$("#bSvg").onclick=()=>{const e=$("#regsvg");if(!e)return;const blob=new Blob([svgForExport(e)],{type:"image/svg+xml"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="cnvista_region.svg";a.click()};
+$("#bBig").onclick=()=>document.body.classList.toggle("big");
+$("#bTheme").onclick=()=>{const r=document.documentElement;const d=r.dataset.theme==="dark"||(!r.dataset.theme&&matchMedia("(prefers-color-scheme: dark)").matches);r.dataset.theme=d?"light":"dark"};
+$("#bReset").onclick=()=>{F.length=0;S=null;sel=null;cur=null;filt.combo="";drawGroups();status("");$("#main").classList.add("hidden")};
+const dz=$("#drop");dz.onclick=e=>{if(e.target.id!=="pickDir")$("#inp").click()};$("#pickDir").onclick=e=>{e.preventDefault();e.stopPropagation();$("#inpDir").click()};
+$("#inp").onchange=e=>addFiles([...e.target.files].map(f=>({file:f,path:f.name})));
+$("#inpDir").onchange=e=>addFiles([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));
+["dragenter","dragover"].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();dz.classList.add("over")}));
+document.addEventListener("dragleave",e=>{if(e.target===dz)dz.classList.remove("over")});
+document.addEventListener("drop",e=>onDrop(e,null));
+document.body.insertAdjacentHTML("beforeend",`<datalist id="knownCallers">${KNOWN.map(k=>`<option value="${k[0]}">`).join("")}</datalist>`);
+drawGroups();
+</script>
+</body>
+</html>
